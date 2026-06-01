@@ -2,6 +2,8 @@
 
 ComfyUI 自定义节点，通过 OpenAI 兼容图像 API 调用远程模型，支持文生图、图像编辑和多图参考合成。
 
+模型服务商：`https://checct.site`
+
 当前默认服务地址固定为 `https://checct.site`，默认模型为 `gpt-image-2-all`。
 
 ## 节点列表
@@ -36,6 +38,8 @@ python_embeded\python.exe -m pip install -r custom_nodes\comfyui-AI-image-nodes\
 ## 使用方法
 
 ### 1. 配置 API
+
+模型服务商：`https://checct.site`
 
 在 ComfyUI 中添加：
 
