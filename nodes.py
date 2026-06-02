@@ -12,6 +12,7 @@ import base64
 import torch
 import numpy as np
 from PIL import Image
+import requests
 from . import config
 from . import api_client
 
@@ -198,8 +199,20 @@ class AIImageGenerate:
         if quality:
             params["quality"] = quality
 
-        print(f"[AI 图像] 文生图生成中... 模型={model}  提示词={prompt[:60]}...")
-        result = api_client.call_text_to_image(settings, params)
+        print(f"[AI 图像] 文生图生成中... 模型={model}  尺寸={size}  提示词={prompt[:60]}...")
+        try:
+            result = api_client.call_text_to_image(settings, params)
+        except requests.exceptions.Timeout:
+            raise RuntimeError(
+                f"AI 图像生成超时（模型={model}，尺寸={size}）。\n"
+                f"高清图像生成可能较慢，请稍后重试，或尝试较小的尺寸（如 1024x1024）。\n"
+                f"如果持续超时，请检查服务器状态。"
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                f"无法连接到服务器 {settings.get('baseUrl', config.DEFAULT_BASE_URL)}\n"
+                f"请检查网络连接和服务器地址。\n原始错误: {e}"
+            )
         images_data = result.get("data", [])
         print(f"[AI 图像] 已生成 {len(images_data)} 张图像")
 
@@ -287,8 +300,20 @@ class AIImageEdit:
         if input_fidelity:
             params["input_fidelity"] = input_fidelity
 
-        print(f"[AI 图像] 图像编辑中... 模型={model}  描述={prompt[:60]}...")
-        result = api_client.call_image_to_image(settings, params)
+        print(f"[AI 图像] 图像编辑中... 模型={model}  尺寸={size}  描述={prompt[:60]}...")
+        try:
+            result = api_client.call_image_to_image(settings, params)
+        except requests.exceptions.Timeout:
+            raise RuntimeError(
+                f"AI 图像编辑超时（模型={model}，尺寸={size}）。\n"
+                f"图像编辑需要同时上传原图并处理，耗时较长。\n"
+                f"当前超时设置为 600 秒，若仍超时可尝试使用较小的尺寸或降低保真度。"
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                f"无法连接到服务器 {settings.get('baseUrl', config.DEFAULT_BASE_URL)}\n"
+                f"请检查网络连接和服务器地址。\n原始错误: {e}"
+            )
         images_data = result.get("data", [])
         print(f"[AI 图像] 已生成 {len(images_data)} 张图像")
 
@@ -391,7 +416,19 @@ class AIImageVariation:
             params["quality"] = quality
 
         print(f"[AI 图像] 多图合成中... 模型={model}  参考图={len(b64_list)}张  提示词={prompt[:60]}...")
-        result = api_client.call_text_to_image(settings, params)
+        try:
+            result = api_client.call_text_to_image(settings, params)
+        except requests.exceptions.Timeout:
+            raise RuntimeError(
+                f"AI 多图合成超时（模型={model}，尺寸={size}）。\n"
+                f"多图合成需要处理多张参考图，耗时较长。\n"
+                f"若持续超时可尝试减少参考图数量或使用较小尺寸。"
+            )
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                f"无法连接到服务器 {settings.get('baseUrl', config.DEFAULT_BASE_URL)}\n"
+                f"请检查网络连接。原始错误: {e}"
+            )
         images_data = result.get("data", [])
         print(f"[AI 图像] 已生成 {len(images_data)} 张图像")
 

@@ -3,8 +3,54 @@ ComfyUI AI Image Generation - API 客户端
 封装对 OpenAI 兼容 API 的调用（/v1/images/generations, /v1/images/edits）
 """
 import base64
+import time
 import requests
 from . import config
+
+# 生成请求的超时（秒）— 高清图生成可能数分钟
+_GEN_TIMEOUT = 600
+# 下载图片的超时（秒）
+_DL_TIMEOUT = 120
+# 最大重试次数，仅对可重试的异常（连接超时、可读超时、5xx）
+_MAX_RETRIES = 2
+# 跳过系统代理（避免代理干扰）
+_NO_PROXY = {"http": "", "https": ""}
+
+
+def _request_with_retry(method, url, max_retries=_MAX_RETRIES, **kwargs):
+    """
+    带指数退避重试的请求封装
+    仅对 connection / read / 5xx 错误重试
+    """
+    # 强制绕过系统代理
+    kwargs.setdefault("proxies", _NO_PROXY)
+
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.request(method, url, **kwargs)
+            # 检查 5xx 服务器错误是否需要重试
+            if resp.status_code >= 500 and attempt < max_retries:
+                wait = 5 * (2 ** attempt)
+                print(f"[AI 图像] 服务器错误 {resp.status_code}，{wait}秒后重试 "
+                      f"({attempt + 1}/{max_retries})...")
+                time.sleep(wait)
+                continue
+            return resp
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout) as e:
+            last_exc = e
+            if attempt < max_retries:
+                wait = 5 * (2 ** attempt)
+                print(f"[AI 图像] 请求超时/连接失败，{wait}秒后重试 "
+                      f"({attempt + 1}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                break
+        except requests.exceptions.RequestException as e:
+            last_exc = e
+            break
+    raise last_exc
 
 
 def _build_url(base_url, path):
@@ -60,7 +106,9 @@ def call_text_to_image(settings, params):
         "Accept": "application/json",
     }
 
-    response = requests.post(url, json=body, headers=headers, timeout=120)
+    response = _request_with_retry(
+        "POST", url, json=body, headers=headers, timeout=_GEN_TIMEOUT
+    )
     data = response.json()
 
     if not response.ok:
@@ -114,7 +162,9 @@ def call_image_to_image(settings, params):
         "Accept": "application/json",
     }
 
-    response = requests.post(url, files=form, headers=headers, timeout=120)
+    response = _request_with_retry(
+        "POST", url, files=form, headers=headers, timeout=_GEN_TIMEOUT
+    )
     data = response.json()
 
     if not response.ok:
@@ -139,7 +189,7 @@ def download_image(url_or_b64):
         header, b64 = url_or_b64.split(",", 1)
         return base64.b64decode(b64)
     else:
-        # URL 下载
-        resp = requests.get(url_or_b64, timeout=60)
+        # URL 下载，跳过系统代理
+        resp = requests.get(url_or_b64, timeout=_DL_TIMEOUT, proxies=_NO_PROXY)
         resp.raise_for_status()
         return resp.content
